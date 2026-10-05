@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#2867c7">
+<title>일본어 회화 발음 연습</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#eef3f9;color:#26384d;font-family:"Hiragino Sans","Yu Gothic","Malgun Gothic",Arial,sans-serif}
+.wrap{max-width:900px;margin:0 auto;padding:20px}
+.hero{background:linear-gradient(135deg,#3c7cdd,#2460bd);color:#fff;border-radius:22px;padding:28px 22px;text-align:center;box-shadow:0 10px 30px #245aa533}
+.hero h1{margin:0;font-size:32px}.hero .sub{font-size:16px;line-height:1.7;margin:10px 0 18px}
+.progress{height:12px;background:#ffffff55;border-radius:20px;overflow:hidden}.bar{height:100%;width:20%;background:#fff;transition:.3s}
+#progressText{margin-top:8px;font-weight:700}
+.card{background:#fff;border-radius:22px;padding:28px 24px;margin-top:18px;box-shadow:0 8px 26px #23456712}
+.count{font-size:16px;color:#68778a}.jp{text-align:center;font-size:42px;font-weight:800;color:#173f72;margin-top:20px;letter-spacing:1px}
+.meaning{text-align:center;font-size:20px;color:#68778a;margin:10px 0 24px}
+button{font-family:inherit}.listen,.mic,.next,.restart{border:0;border-radius:14px;cursor:pointer;font-weight:800}
+.listen{display:block;margin:0 auto 18px;padding:14px 24px;background:#fff;border:1px solid #d6dfeb;color:#204b7d;font-size:18px}
+.mic{display:block;width:100%;padding:20px;background:linear-gradient(135deg,#3478dc,#245bb7);color:white;font-size:22px}
+.mic.listening{background:#b33a48}
+.status{margin-top:16px;background:#eef3f9;border-radius:14px;padding:16px;text-align:center;line-height:1.6;min-height:58px}
+.speech{margin-top:14px;border:1px dashed #c9d4df;border-radius:14px;padding:18px;min-height:58px}
+.score{text-align:center;font-size:38px;font-weight:900;color:#2867c7;margin-top:20px}.score-label{text-align:center;color:#718096}
+.next{display:block;width:100%;margin-top:18px;padding:16px;background:#e7edf5;color:#294b6f;font-size:18px}
+.next:disabled{opacity:.45;cursor:not-allowed}
+.small{margin-top:18px;color:#718096;font-size:13px;line-height:1.7;text-align:center}
+.result{display:none;text-align:center}.result h2{color:#174477}.final-score{font-size:48px;font-weight:900;color:#2867c7}
+.score-list{text-align:left;margin:20px 0}.score-list div{padding:10px;border-bottom:1px solid #edf0f4}
+.restart{padding:16px 24px;background:#2867c7;color:white;font-size:18px}
+.warn{color:#a22;font-weight:700}.ok{color:#087b45;font-weight:700}
+@media(max-width:600px){.wrap{padding:12px}.hero h1{font-size:25px}.jp{font-size:31px}.meaning{font-size:18px}.mic{font-size:20px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<section class="hero">
+<h1>🇯🇵 일본어 회화 발음 연습</h1>
+<p class="sub">문장을 듣고 따라 말해 보세요.<br><b>70점 이상이면 통과!</b></p>
+<div class="progress"><div class="bar" id="progressBar"></div></div>
+<div id="progressText">1 / 5</div>
+</section>
+
+<section class="card" id="practiceCard">
+<div class="count" id="count">1번 문장</div>
+<div class="jp" id="japaneseSentence"></div>
+<div class="meaning" id="meaning"></div>
+<button class="listen" id="listenButton">🔊 일본어 듣기</button>
+<button class="mic" id="micButton">🎤 다시 발음하기</button>
+<div class="status" id="status">버튼을 누르고 일본어로 문장을 말해 주세요.</div>
+<div class="speech" id="speech">학생 발화: 아직 말하지 않았습니다.</div>
+<div class="score" id="currentScore">-</div>
+<div class="score-label">문장별 점수 · 100점 만점</div>
+<button class="next" id="nextButton" disabled>다음 문장 →</button>
+<div class="small">
+※ 이 페이지는 Apps Script 내부가 아니라 일반 HTTPS 웹페이지에서 음성인식을 실행합니다.<br>
+※ 휴대폰 Chrome 등 최신 브라우저를 권장합니다.
+</div>
+</section>
+
+<section class="card result" id="resultCard">
+<h2 id="resultTitle">🎉 결과</h2>
+<div class="final-score" id="finalScore">0점</div>
+<p id="resultMessage"></p>
+<div class="score-list" id="scoreList"></div>
+<button class="restart" id="restartButton">🔄 다시 연습하기</button>
+</section>
+</div>
+
+<script>
+const DATA={
+ passScore:70,
+ sentences:[
+  {number:1,japanese:"いらっしゃいませ",meaning:"어서 오세요"},
+  {number:2,japanese:"おすすめは なんですか。",meaning:"추천 메뉴는 무엇인가요?"},
+  {number:3,japanese:"おでんと サイダーです。",meaning:"오뎅과 사이다입니다."},
+  {number:4,japanese:"いくらですか。",meaning:"얼마입니까?"},
+  {number:5,japanese:"3，500ウォンです。",meaning:"3,500원입니다."}
+ ]
+};
+
+let currentIndex=0,scores=[],recognition=null,isListening=false;
+
+function normalize(text){
+ return String(text||"").toLowerCase().replace(/[、。！？,.!?]/g,"").replace(/\s+/g,"").replace(/　/g,"");
+}
+function levenshtein(a,b){
+ const m=a.length,n=b.length;if(!m)return n;if(!n)return m;
+ const dp=Array.from({length:m+1},()=>Array(n+1).fill(0));
+ for(let i=0;i<=m;i++)dp[i][0]=i;
+ for(let j=0;j<=n;j++)dp[0][j]=j;
+ for(let i=1;i<=m;i++)for(let j=1;j<=n;j++)
+  dp[i][j]=Math.min(dp[i-1][j]+1,dp[i][j-1]+1,dp[i-1][j-1]+(a[i-1]===b[j-1]?0:1));
+ return dp[m][n];
+}
+function calculateScore(answer,target){
+ const a=normalize(answer),b=normalize(target);if(!a||!b)return 0;
+ return Math.max(0,Math.min(100,Math.round((1-levenshtein(a,b)/Math.max(a.length,b.length))*100)));
+}
+function loadSentence(){
+ const s=DATA.sentences[currentIndex];
+ document.getElementById("count").textContent=s.number+"번 문장";
+ document.getElementById("japaneseSentence").textContent=s.japanese;
+ document.getElementById("meaning").textContent=s.meaning;
+ document.getElementById("speech").textContent="학생 발화: 아직 말하지 않았습니다.";
+ document.getElementById("currentScore").textContent="-";
+ document.getElementById("status").textContent="버튼을 누르고 일본어로 문장을 말해 주세요.";
+ document.getElementById("nextButton").disabled=true;
+ document.getElementById("micButton").disabled=false;
+ document.getElementById("micButton").classList.remove("listening");
+ document.getElementById("micButton").textContent="🎤 다시 발음하기";
+ document.getElementById("progressBar").style.width=((currentIndex+1)/DATA.sentences.length*100)+"%";
+ document.getElementById("progressText").textContent=(currentIndex+1)+" / "+DATA.sentences.length;
+}
+function speakJapanese(){
+ if(!("speechSynthesis" in window)){document.getElementById("status").textContent="이 브라우저에서는 일본어 듣기를 지원하지 않습니다.";return;}
+ const u=new SpeechSynthesisUtterance(DATA.sentences[currentIndex].japanese);
+ u.lang="ja-JP";u.rate=.82;speechSynthesis.cancel();speechSynthesis.speak(u);
+}
+function startRecognition(){
+ const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+ if(!window.isSecureContext){
+  document.getElementById("status").innerHTML='<span class="warn">🔒 HTTPS 환경에서만 마이크를 사용할 수 있습니다.</span>';
+  return;
+ }
+ if(!SR){
+  document.getElementById("status").innerHTML='<span class="warn">이 브라우저에서는 일본어 음성인식을 지원하지 않습니다.</span><br>휴대폰 Chrome 등에서 다시 시도해 주세요.';
+  return;
+ }
+ if(isListening){try{recognition.stop();}catch(e){}return;}
+
+ recognition=new SR();
+ recognition.lang="ja-JP";
+ recognition.interimResults=false;
+ recognition.continuous=false;
+ recognition.maxAlternatives=5;
+
+ isListening=true;
+ document.getElementById("micButton").classList.add("listening");
+ document.getElementById("micButton").textContent="⏹️ 듣는 중...";
+ document.getElementById("status").innerHTML='<span class="ok">🟡 음성인식을 시작합니다...</span><br>잠시 후 일본어로 말해 주세요.';
+
+ recognition.onstart=function(){
+  document.getElementById("status").innerHTML='<span class="ok">🟢 일본어 음성인식 중...</span><br>문장을 또박또박 말해 주세요.';
+ };
+
+ recognition.onresult=function(event){
+  let bestText="",bestScore=-1;
+  const target=DATA.sentences[currentIndex].japanese;
+  for(let i=0;i<event.results[0].length;i++){
+   const text=event.results[0][i].transcript;
+   const score=calculateScore(text,target);
+   if(score>bestScore){bestScore=score;bestText=text;}
+  }
+  scores[currentIndex]=bestScore;
+  document.getElementById("speech").textContent="학생 발화: "+bestText;
+  document.getElementById("currentScore").textContent=bestScore+"점";
+  document.getElementById("nextButton").disabled=false;
+  document.getElementById("status").textContent=bestScore>=70?"👍 잘했습니다! 다음 문장으로 넘어가세요.":"조금 더 천천히 다시 연습해 보세요.";
+ };
+
+ recognition.onerror=function(event){
+  const messages={
+   "not-allowed":"🔒 마이크/음성인식 권한이 허용되지 않았습니다. 이 페이지 주소의 마이크 권한을 확인해 주세요.",
+   "service-not-allowed":"🔒 이 브라우저에서는 음성인식 서비스가 허용되지 않습니다. 휴대폰 Chrome에서 다시 시도해 주세요.",
+   "audio-capture":"🎤 마이크를 사용할 수 없습니다.",
+   "no-speech":"🤫 음성이 감지되지 않았습니다. 버튼을 누른 뒤 바로 말해 주세요.",
+   "network":"🌐 음성인식 서비스 연결에 문제가 있습니다.",
+   "aborted":"음성인식이 중지되었습니다."
+  };
+  document.getElementById("status").innerHTML='<span class="warn">'+(messages[event.error]||("음성인식 오류: "+event.error))+"</span>";
+  isListening=false;
+  document.getElementById("micButton").classList.remove("listening");
+  document.getElementById("micButton").textContent="🎤 다시 발음하기";
+ };
+
+ recognition.onend=function(){
+  isListening=false;
+  document.getElementById("micButton").classList.remove("listening");
+  document.getElementById("micButton").textContent="🎤 다시 발음하기";
+ };
+ try{recognition.start();}
+ catch(e){
+  isListening=false;
+  document.getElementById("micButton").classList.remove("listening");
+  document.getElementById("micButton").textContent="🎤 다시 발음하기";
+  document.getElementById("status").textContent="음성인식을 시작하지 못했습니다. 버튼을 한 번 더 눌러 주세요.";
+ }
+}
+function nextSentence(){
+ if(scores[currentIndex]==null)return;
+ if(currentIndex<DATA.sentences.length-1){currentIndex++;loadSentence();}
+ else showResult();
+}
+function showResult(){
+ document.getElementById("practiceCard").style.display="none";
+ document.getElementById("resultCard").style.display="block";
+ const valid=scores.filter(v=>typeof v==="number");
+ const final=valid.length?Math.round(valid.reduce((a,b)=>a+b,0)/valid.length):0;
+ document.getElementById("finalScore").textContent=final+"점";
+ document.getElementById("resultMessage").textContent=final>=DATA.passScore?"🎉 통과! 정말 잘했습니다!":"조금 더 연습해 보세요.";
+ document.getElementById("scoreList").innerHTML=scores.map((s,i)=>"<div>"+(i+1)+"번 문장 : "+(s??0)+"점</div>").join("");
+ if(final>=DATA.passScore)playFanfare();
+}
+function playFanfare(){
+ try{
+  const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
+  const ctx=new AC(),notes=[523.25,659.25,783.99,1046.5];
+  notes.forEach((f,i)=>{
+   const o=ctx.createOscillator(),g=ctx.createGain();
+   o.type="triangle";o.frequency.value=f;o.connect(g);g.connect(ctx.destination);
+   const t=ctx.currentTime+i*.16;
+   g.gain.setValueAtTime(.0001,t);
+   g.gain.exponentialRampToValueAtTime(.22,t+.03);
+   g.gain.exponentialRampToValueAtTime(.0001,t+.15);
+   o.start(t);o.stop(t+.17);
+  });
+ }catch(e){}
+}
+function restart(){
+ currentIndex=0;scores=[];
+ document.getElementById("resultCard").style.display="none";
+ document.getElementById("practiceCard").style.display="block";
+ loadSentence();
+}
+document.getElementById("listenButton").addEventListener("click",speakJapanese);
+document.getElementById("micButton").addEventListener("click",startRecognition);
+document.getElementById("nextButton").addEventListener("click",nextSentence);
+document.getElementById("restartButton").addEventListener("click",restart);
+loadSentence();
+</script>
+</body>
+</html>
